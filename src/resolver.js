@@ -7,9 +7,9 @@ function getConfig(k) {
 // Generic HTTP functions
 const makeRequest = async (endpoint, options = {}) => {
 
-    const baseUrl = getConfig('baseUrl')
-    const user = getConfig('user')
-    const password = getConfig('password')
+    const baseUrl = getConfig('baseUrl') || process.env.INFOBLOX_BASE_URL
+    const user = getConfig('user') || process.env.INFOBLOX_USERNAME
+    const password = getConfig('password') || process.env.INFOBLOX_PASSWORD
     const authHeader = 'Basic ' + btoa(`${user}:${password}`)
     
     const url = `${baseUrl}${endpoint}`;
@@ -68,7 +68,8 @@ export const createAAAA = async (env, attributes) => {
         return {
             name: data.name,
             ipv6addr: data.ipv6addr,
-            id: result.id
+            id: result.id,
+            message: "AAAA record created successfully"
         };
     } catch (error) {
         throw new Error(`Failed to create AAAA record: ${error.message}`);
@@ -95,7 +96,8 @@ export const createCNAME = async (env, attributes) => {
         return {
             name: data.name,
             canonical: data.canonical,
-            id: result.id
+            id: result.id,
+            message: "CNAME record created successfully"
         };
     } catch (error) {
         throw new Error(`Failed to create CNAME record: ${error.message}`);
@@ -124,7 +126,8 @@ export const createMX = async (env, attributes) => {
             name: data.name,
             preference: data.preference,
             mail_exchanger: data.mail_exchanger,
-            id: result.id
+            id: result.id,
+            message: "MX record created successfully"
         };
     } catch (error) {
         throw new Error(`Failed to create MX record: ${error.message}`);
@@ -153,7 +156,8 @@ export const createHost = async (env, attributes) => {
             name: data.name,
             ipv4addr: data.ipv4addr,
             ipv6addr: data.ipv6addr,
-            id: result.id
+            id: result.id,
+            message: "HOST record created successfully"
         };
     } catch (error) {
         throw new Error(`Failed to create HOST record: ${error.message}`);
@@ -180,7 +184,8 @@ export const createTXT = async (env, attributes) => {
         return {
             name: data.name,
             text: data.text,
-            id: result.id
+            id: result.id,
+            message: "TXT record created successfully"
         };
     } catch (error) {
         throw new Error(`Failed to create TXT record: ${error.message}`);
@@ -207,7 +212,8 @@ export const createPTR = async (env, attributes) => {
         return {
             ptrdname: data.ptrdname,
             ipv4addr: data.ipv4addr,
-            id: result.id
+            id: result.id,
+            message: "PTR record created successfully"
         };
     } catch (error) {
         throw new Error(`Failed to create PTR record: ${error.message}`);
@@ -232,7 +238,8 @@ export const createNetwork = async (env, attributes) => {
         const result = await makePostRequest('/network', data);
         return {
             network: data.network,
-            id: result.id
+            id: result.id,
+            message: "Network created successfully"
         };
     } catch (error) {
         throw new Error(`Failed to create network: ${error.message}`);
