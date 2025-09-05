@@ -72,7 +72,7 @@ export const createAAAA = async (env, attributes) => {
             message: "AAAA record created successfully"
         };
     } catch (error) {
-        throw new Error(`Failed to create AAAA record: ${error.message}`);
+        console.error(`Failed to create AAAA record: ${error.message}`);
     }
 };
 
@@ -80,7 +80,7 @@ export const queryAAAA = async (env, id) => {
     try {
         return await makeGetRequest('/record:aaaa');
     } catch (error) {
-        throw new Error(`Failed to query AAAA records: ${error.message}`);
+        console.error(`Failed to query AAAA records: ${error.message}`);
     }
 };
 
@@ -100,7 +100,7 @@ export const createCNAME = async (env, attributes) => {
             message: "CNAME record created successfully"
         };
     } catch (error) {
-        throw new Error(`Failed to create CNAME record: ${error.message}`);
+        console.error(`Failed to create CNAME record: ${error.message}`);
     }
 };
 
@@ -108,7 +108,7 @@ export const queryCNAME = async (env, name) => {
     try {
         return await makeGetRequest('/record:cname');
     } catch (error) {
-        throw new Error(`Failed to query CNAME records: ${error.message}`);
+        console.error(`Failed to query CNAME records: ${error.message}`);
     }
 };
 
@@ -130,7 +130,7 @@ export const createMX = async (env, attributes) => {
             message: "MX record created successfully"
         };
     } catch (error) {
-        throw new Error(`Failed to create MX record: ${error.message}`);
+        console.error(`Failed to create MX record: ${error.message}`);
     }
 };
 
@@ -138,7 +138,7 @@ export const queryMX = async (env, name) => {
     try {
         return await makeGetRequest('/record:mx');
     } catch (error) {
-        throw new Error(`Failed to query MX records: ${error.message}`);
+        console.error(`Failed to query MX records: ${error.message}`);
     }
 };
 
@@ -160,7 +160,7 @@ export const createHost = async (env, attributes) => {
             message: "HOST record created successfully"
         };
     } catch (error) {
-        throw new Error(`Failed to create HOST record: ${error.message}`);
+        console.error(`Failed to create HOST record: ${error.message}`);
     }
 };
 
@@ -168,7 +168,7 @@ export const queryHost = async (env, name) => {
     try {
         return await makeGetRequest('/record:host');
     } catch (error) {
-        throw new Error(`Failed to query HOST records: ${error.message}`);
+        console.error(`Failed to query HOST records: ${error.message}`);
     }
 };
 
@@ -188,7 +188,7 @@ export const createTXT = async (env, attributes) => {
             message: "TXT record created successfully"
         };
     } catch (error) {
-        throw new Error(`Failed to create TXT record: ${error.message}`);
+        console.error(`Failed to create TXT record: ${error.message}`);
     }
 };
 
@@ -196,7 +196,7 @@ export const queryTXT = async (env, name) => {
     try {
         return await makeGetRequest('/record:txt');
     } catch (error) {
-        throw new Error(`Failed to query TXT records: ${error.message}`);
+        console.error(`Failed to query TXT records: ${error.message}`);
     }
 };
 
@@ -216,7 +216,7 @@ export const createPTR = async (env, attributes) => {
             message: "PTR record created successfully"
         };
     } catch (error) {
-        throw new Error(`Failed to create PTR record: ${error.message}`);
+        console.error(`Failed to create PTR record: ${error.message}`);
     }
 };
 
@@ -224,7 +224,7 @@ export const queryPTR = async (env, name) => {
     try {
         return await makeGetRequest('/record:ptr');
     } catch (error) {
-        throw new Error(`Failed to query PTR records: ${error.message}`);
+        console.error(`Failed to query PTR records: ${error.message}`);
     }
 };
 
