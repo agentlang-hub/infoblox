@@ -81,7 +81,6 @@ export const queryAAAA = async (env, id) => {
     try {
         return await makeGetRequest('/record:aaaa');
     } catch (error) {
-        console.log("aaa", error);
         console.error(`Failed to query AAAA records: ${error.message}`);
         return {"result": "error"};
     }
@@ -95,10 +94,9 @@ export const createCNAME = async (env, attributes) => {
     };
 
     try {
-        await makePostRequest('/record:cname', data);
+        const result = await makePostRequest('/record:cname', data);
         return {"result": "success"};
     } catch (error) {
-        console.log("aaa", error);
         console.error(`Failed to create CNAME record: ${error.message}`);
         return {"result": "error"};
     }
