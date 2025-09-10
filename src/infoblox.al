@@ -3,34 +3,34 @@ module infoblox
 import "resolver.js" @as ibr
 
 entity AAAA {
-    name String,
-    ipv6addr String
+    name String @optional,
+    ipv6addr String @optional
 }
 
 entity CNAME {
-    name String,
-    canonical String
+    name String @optional,
+    canonical String @optional
 }
 
 entity MX {
-    name String,
-    preference Int,
-    mail_exchanger String
+    name String @optional, 
+    preference Int @optional,
+    mail_exchanger String @optional
 } 
 
 entity TXT {
-    name String,
-    text String
+    name String @optional,
+    text String @optional
 }
 
 entity PTR {
-    ptrdname String,
-    ipv4addr String
+    ptrdname String @optional,
+    ipv4addr String @optional
 }
 
 entity Host {
-    name String,
-    ipaddress String
+    name String @optional,
+    ipaddress String @optional
 }
 
 resolver ib1 [infoblox/AAAA] {
