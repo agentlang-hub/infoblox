@@ -30,7 +30,8 @@ const makeRequest = async (endpoint, options = {}) => {
     const response = await fetch(url, config);
 
     if (!response.ok) {
-        throw new Error(`HTTP Error: ${response.status} - ${response.statusText}`);
+        console.error(`HTTP Error: ${response.status} - ${response.statusText}`);
+        return {"result": "error"};
     }
 
     return response;
@@ -41,7 +42,7 @@ const makeGetRequest = async (endpoint) => {
     
     const response = await makeRequest(endpoint, { method: 'GET' });
     const data = await response.json();
-    return data.result;
+    return data
 };
 
 const makePostRequest = async (endpoint, body) => {
@@ -52,8 +53,11 @@ const makePostRequest = async (endpoint, body) => {
         body: JSON.stringify(body)
     });
     
-    const data = await response.json();
-    return data;
+    if (response.status != 201 && response.status != 200) {
+        throw new Error(`HTTP Error: ${response.status} - ${response.statusText}`);
+    }
+
+    return response;
 };
 
 // AAAA Record functions
@@ -65,14 +69,11 @@ export const createAAAA = async (env, attributes) => {
 
     try {
         const result = await makePostRequest('/record:aaaa', data);
-        return {
-            name: data.name,
-            ipv6addr: data.ipv6addr,
-            id: result.id,
-            message: "AAAA record created successfully"
-        };
+        return {"result": "success"};
     } catch (error) {
         console.error(`Failed to create AAAA record: ${error.message}`);
+        console.log("aaa", error);
+        return {"result": "error"};
     }
 };
 
@@ -80,7 +81,9 @@ export const queryAAAA = async (env, id) => {
     try {
         return await makeGetRequest('/record:aaaa');
     } catch (error) {
+        console.log("aaa", error);
         console.error(`Failed to query AAAA records: ${error.message}`);
+        return {"result": "error"};
     }
 };
 
@@ -92,15 +95,12 @@ export const createCNAME = async (env, attributes) => {
     };
 
     try {
-        const result = await makePostRequest('/record:cname', data);
-        return {
-            name: data.name,
-            canonical: data.canonical,
-            id: result.id,
-            message: "CNAME record created successfully"
-        };
+        await makePostRequest('/record:cname', data);
+        return {"result": "success"};
     } catch (error) {
+        console.log("aaa", error);
         console.error(`Failed to create CNAME record: ${error.message}`);
+        return {"result": "error"};
     }
 };
 
@@ -109,6 +109,7 @@ export const queryCNAME = async (env, name) => {
         return await makeGetRequest('/record:cname');
     } catch (error) {
         console.error(`Failed to query CNAME records: ${error.message}`);
+        return {"result": "error"};
     }
 };
 
@@ -122,15 +123,10 @@ export const createMX = async (env, attributes) => {
 
     try {
         const result = await makePostRequest('/record:mx', data);
-        return {
-            name: data.name,
-            preference: data.preference,
-            mail_exchanger: data.mail_exchanger,
-            id: result.id,
-            message: "MX record created successfully"
-        };
+        return {"result": "success"};
     } catch (error) {
         console.error(`Failed to create MX record: ${error.message}`);
+        return {"result": "error"};
     }
 };
 
@@ -139,6 +135,7 @@ export const queryMX = async (env, name) => {
         return await makeGetRequest('/record:mx');
     } catch (error) {
         console.error(`Failed to query MX records: ${error.message}`);
+        return {"result": "error"};
     }
 };
 
@@ -152,15 +149,10 @@ export const createHost = async (env, attributes) => {
 
     try {
         const result = await makePostRequest('/record:host', data);
-        return {
-            name: data.name,
-            ipv4addr: data.ipv4addr,
-            ipv6addr: data.ipv6addr,
-            id: result.id,
-            message: "HOST record created successfully"
-        };
+        return {"result": "success"};
     } catch (error) {
         console.error(`Failed to create HOST record: ${error.message}`);
+        return {"result": "error"};
     }
 };
 
@@ -169,6 +161,7 @@ export const queryHost = async (env, name) => {
         return await makeGetRequest('/record:host');
     } catch (error) {
         console.error(`Failed to query HOST records: ${error.message}`);
+        return {"result": "error"};
     }
 };
 
@@ -181,14 +174,10 @@ export const createTXT = async (env, attributes) => {
 
     try {
         const result = await makePostRequest('/record:txt', data);
-        return {
-            name: data.name,
-            text: data.text,
-            id: result.id,
-            message: "TXT record created successfully"
-        };
+        return {"result": "success"};
     } catch (error) {
         console.error(`Failed to create TXT record: ${error.message}`);
+        return {"result": "error"};
     }
 };
 
@@ -197,6 +186,7 @@ export const queryTXT = async (env, name) => {
         return await makeGetRequest('/record:txt');
     } catch (error) {
         console.error(`Failed to query TXT records: ${error.message}`);
+        return {"result": "error"};
     }
 };
 
@@ -209,14 +199,10 @@ export const createPTR = async (env, attributes) => {
 
     try {
         const result = await makePostRequest('/record:ptr', data);
-        return {
-            ptrdname: data.ptrdname,
-            ipv4addr: data.ipv4addr,
-            id: result.id,
-            message: "PTR record created successfully"
-        };
+        return {"result": "success"};
     } catch (error) {
         console.error(`Failed to create PTR record: ${error.message}`);
+        return {"result": "error"};
     }
 };
 
@@ -225,6 +211,7 @@ export const queryPTR = async (env, name) => {
         return await makeGetRequest('/record:ptr');
     } catch (error) {
         console.error(`Failed to query PTR records: ${error.message}`);
+        return {"result": "error"};
     }
 };
 
@@ -237,12 +224,11 @@ export const createNetwork = async (env, attributes) => {
     try {
         const result = await makePostRequest('/network', data);
         return {
-            network: data.network,
-            id: result.id,
-            message: "Network created successfully"
+            "result": "success"
         };
     } catch (error) {
-        throw new Error(`Failed to create network: ${error.message}`);
+        console.error(`Failed to create network: ${error.message}`);
+        return {"result": "error"};
     }
 };
 
@@ -252,13 +238,14 @@ export const queryNetwork = async (env, id) => {
             // Query specific network by ID
             const response = await makeRequest(`/network/${id}`, { method: 'GET' });
             const data = await response.json();
-            return [data]; // Return as array for consistency
+            return {"result": "success"};
         } else {
             // Query all networks
             return await makeGetRequest('/network');
         }
     } catch (error) {
-        throw new Error(`Failed to query network: ${error.message}`);
+        console.error(`Failed to query network: ${error.message}`);
+        return {"result": "error"};
     }
 };
 
