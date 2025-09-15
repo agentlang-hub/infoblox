@@ -6,7 +6,6 @@ function getConfig(k) {
 
 // Generic HTTP functions
 const makeRequest = async (endpoint, options = {}) => {
-
     const baseUrl = getConfig('baseUrl') || process.env.INFOBLOX_BASE_URL
     const user = getConfig('user') || process.env.INFOBLOX_USERNAME
     const password = getConfig('password') || process.env.INFOBLOX_PASSWORD
@@ -27,14 +26,43 @@ const makeRequest = async (endpoint, options = {}) => {
         delete config.headers['Content-Type'];
     }
 
-    const response = await fetch(url, config);
+    const timeoutMs = 30000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+        console.error(`INFOBLOX RESOLVER: Request timeout after ${timeoutMs}ms - ${url} - ${JSON.stringify(options)}`);
+        controller.abort();
+    }, timeoutMs);
 
-    if (!response.ok) {
-        console.error(`HTTP Error: ${response.status} - ${response.statusText}`);
-        return {"result": "error"};
+    try {
+        const response = await fetch(url, {
+            ...config,
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            console.error(`INFOBLOX RESOLVER: HTTP Error ${response.status} - ${url} - ${JSON.stringify(options)}`);
+            return {"result": "error"};
+        }
+
+        return response;
+
+    } catch (error) {
+        clearTimeout(timeoutId);
+        
+        if (error.name === 'AbortError') {
+            console.error(`INFOBLOX RESOLVER: Request timeout - ${url} - ${JSON.stringify(options)}`);
+        } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'EHOSTUNREACH') {
+            console.error(`INFOBLOX RESOLVER: Network unreachable (${error.code}) - ${url} - ${JSON.stringify(options)}`);
+        } else if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
+            console.error(`INFOBLOX RESOLVER: Connection error (${error.code}) - ${url} - ${JSON.stringify(options)}`);
+        } else {
+            console.error(`INFOBLOX RESOLVER: Request failed (${error.name}) - ${url} - ${JSON.stringify(options)}`);
+        }
+        
+        throw error;
     }
-
-    return response;
 };
 
 const makeGetRequest = async (endpoint) => {
@@ -71,8 +99,7 @@ export const createAAAA = async (env, attributes) => {
         const result = await makePostRequest('/record:aaaa', data);
         return {"result": "success"};
     } catch (error) {
-        console.error(`Failed to create AAAA record: ${error.message}`);
-        console.log("aaa", error);
+        console.error(`INFOBLOX RESOLVER: Failed to create AAAA record: ${error}`);
         return {"result": "error"};
     }
 };
@@ -81,7 +108,7 @@ export const queryAAAA = async (env, id) => {
     try {
         return await makeGetRequest('/record:aaaa');
     } catch (error) {
-        console.error(`Failed to query AAAA records: ${error.message}`);
+        console.error(`INFOBLOX RESOLVER: Failed to query AAAA records: ${error}`);
         return {"result": "error"};
     }
 };
@@ -97,7 +124,7 @@ export const createCNAME = async (env, attributes) => {
         const result = await makePostRequest('/record:cname', data);
         return {"result": "success"};
     } catch (error) {
-        console.error(`Failed to create CNAME record: ${error.message}`);
+        console.error(`INFOBLOX RESOLVER: Failed to create CNAME record: ${error}`);
         return {"result": "error"};
     }
 };
@@ -106,7 +133,7 @@ export const queryCNAME = async (env, name) => {
     try {
         return await makeGetRequest('/record:cname');
     } catch (error) {
-        console.error(`Failed to query CNAME records: ${error.message}`);
+        console.error(`INFOBLOX RESOLVER: Failed to query CNAME records: ${error}`);
         return {"result": "error"};
     }
 };
@@ -123,7 +150,7 @@ export const createMX = async (env, attributes) => {
         const result = await makePostRequest('/record:mx', data);
         return {"result": "success"};
     } catch (error) {
-        console.error(`Failed to create MX record: ${error.message}`);
+        console.error(`INFOBLOX RESOLVER: Failed to create MX record: ${error}`);
         return {"result": "error"};
     }
 };
@@ -132,7 +159,7 @@ export const queryMX = async (env, name) => {
     try {
         return await makeGetRequest('/record:mx');
     } catch (error) {
-        console.error(`Failed to query MX records: ${error.message}`);
+        console.error(`INFOBLOX RESOLVER: Failed to query MX records: ${error}`);
         return {"result": "error"};
     }
 };
@@ -149,7 +176,7 @@ export const createHost = async (env, attributes) => {
         const result = await makePostRequest('/record:host', data);
         return {"result": "success"};
     } catch (error) {
-        console.error(`Failed to create HOST record: ${error.message}`);
+        console.error(`INFOBLOX RESOLVER: Failed to create HOST record: ${error}`);
         return {"result": "error"};
     }
 };
@@ -158,7 +185,7 @@ export const queryHost = async (env, name) => {
     try {
         return await makeGetRequest('/record:host');
     } catch (error) {
-        console.error(`Failed to query HOST records: ${error.message}`);
+        console.error(`INFOBLOX RESOLVER: Failed to query HOST records: ${error}`);
         return {"result": "error"};
     }
 };
@@ -174,7 +201,7 @@ export const createTXT = async (env, attributes) => {
         const result = await makePostRequest('/record:txt', data);
         return {"result": "success"};
     } catch (error) {
-        console.error(`Failed to create TXT record: ${error.message}`);
+        console.error(`INFOBLOX RESOLVER: Failed to create TXT record: ${error}`);
         return {"result": "error"};
     }
 };
@@ -183,7 +210,7 @@ export const queryTXT = async (env, name) => {
     try {
         return await makeGetRequest('/record:txt');
     } catch (error) {
-        console.error(`Failed to query TXT records: ${error.message}`);
+        console.error(`INFOBLOX RESOLVER: Failed to query TXT records: ${error}`);
         return {"result": "error"};
     }
 };
@@ -199,7 +226,7 @@ export const createPTR = async (env, attributes) => {
         const result = await makePostRequest('/record:ptr', data);
         return {"result": "success"};
     } catch (error) {
-        console.error(`Failed to create PTR record: ${error.message}`);
+        console.error(`INFOBLOX RESOLVER: Failed to create PTR record: ${error}`);
         return {"result": "error"};
     }
 };
@@ -208,7 +235,7 @@ export const queryPTR = async (env, name) => {
     try {
         return await makeGetRequest('/record:ptr');
     } catch (error) {
-        console.error(`Failed to query PTR records: ${error.message}`);
+        console.error(`INFOBLOX RESOLVER: Failed to query PTR records: ${error}`);
         return {"result": "error"};
     }
 };
@@ -225,7 +252,7 @@ export const createNetwork = async (env, attributes) => {
             "result": "success"
         };
     } catch (error) {
-        console.error(`Failed to create network: ${error.message}`);
+        console.error(`INFOBLOX RESOLVER: Failed to create network: ${error}`);
         return {"result": "error"};
     }
 };
@@ -242,7 +269,7 @@ export const queryNetwork = async (env, id) => {
             return await makeGetRequest('/network');
         }
     } catch (error) {
-        console.error(`Failed to query network: ${error.message}`);
+        console.error(`INFOBLOX RESOLVER: Failed to query network: ${error}`);
         return {"result": "error"};
     }
 };
