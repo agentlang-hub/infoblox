@@ -41,7 +41,7 @@ const makeRequest = async (endpoint, options = {}) => {
             signal: controller.signal
         });
 
-        console.log(`INFOBLOX RESOLVER: response ${response}`)
+        console.log(`INFOBLOX RESOLVER: response ${JSON.stringify(response)}`)
         
         clearTimeout(timeoutId);
 
@@ -86,7 +86,21 @@ const makePostRequest = async (endpoint, body) => {
     });
     
     if (response.status != 201 && response.status != 200) {
-        throw new Error(`HTTP Error: ${response.status} - ${response.statusText}`);
+        throw new Error(`HTTP Error: ${JSON.stringify(response)}`);
+    }
+
+    return response;
+};
+
+const makePatchRequest = async (endpoint, body) => {
+    console.log(`INFOBLOX RESOLVER: Updating a DNS Entry: ${endpoint}\n`);
+    const response = await makeRequest(endpoint, {
+        method: 'PATCH',
+        body: JSON.stringify(body)
+    });
+
+    if (response.status != 201 && response.status != 200) {
+        throw new Error(`HTTP Error: ${JSON.stringify(response)}`);
     }
 
     return response;
@@ -125,10 +139,26 @@ export const createCNAME = async (env, attributes) => {
     };
 
     try {
-        const result = await makePostRequest('/record:cname', data);
+        const existingRecords = await makeGetRequest('/record:cname?name=' + data.name);
+        let existingRecord; 
+        
+        if (typeof existingRecords === 'array') {
+            existingRecord = existingRecords.find(record => 
+                record.name === data.name
+            );
+        } else {
+            existingRecord = existingRecords;
+        }
+
+        let result;
+        if (existingRecord && existingRecord._ref) {
+            result = await makePatchRequest(`/record:cname/${existingRecord._ref}`, data);
+        } else {
+            result = await makePostRequest('/record:cname', data);
+        }
         return {"result": "success"};
     } catch (error) {
-        console.error(`INFOBLOX RESOLVER: Failed to create CNAME record: ${error}`);
+        console.error(`INFOBLOX RESOLVER: Failed to create/update CNAME record: ${error}`);
         return {"result": "error"};
     }
 };
