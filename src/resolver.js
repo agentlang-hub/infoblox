@@ -19,7 +19,7 @@ const makeRequest = async (endpoint, options = {}) => {
         }
     };
 
-    console.log(`INFOBLOX RESOLVER: fetching ${url} with options ${JSON.stringify(options)}`)
+    console.log(`INFOBLOX RESOLVER: making http request ${options.method} ${url} with options ${JSON.stringify(options)}`)
 
     const config = { ...defaultOptions, ...options };
     
