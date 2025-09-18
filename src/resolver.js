@@ -19,6 +19,8 @@ const makeRequest = async (endpoint, options = {}) => {
         }
     };
 
+    console.log(`INFOBLOX RESOLVER: fetching ${url} with options ${JSON.stringify(options)}`)
+
     const config = { ...defaultOptions, ...options };
     
     // Remove Content-Type header for GET requests without body
@@ -39,6 +41,8 @@ const makeRequest = async (endpoint, options = {}) => {
             signal: controller.signal
         });
 
+        console.log(`INFOBLOX RESOLVER: response ${response}`)
+        
         clearTimeout(timeoutId);
 
         if (!response.ok) {
