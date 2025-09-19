@@ -4,6 +4,19 @@ function getConfig(k) {
     return al_integmanager.getIntegrationConfig('infoblox', k)
 }
 
+const getResponseBody = async (response) => {
+    try {
+        try {
+            return await response.json()
+        } catch (e) {
+            return await response.text();
+        }
+    } catch (error) {
+        console.error("INFOBLOX RESOLVER: Error reading response body:", error);
+        return {};
+    }
+}
+
 // Generic HTTP functions
 const makeRequest = async (endpoint, options = {}) => {
     const baseUrl = getConfig('baseUrl') || process.env.INFOBLOX_BASE_URL
@@ -36,21 +49,26 @@ const makeRequest = async (endpoint, options = {}) => {
     }, timeoutMs);
 
     try {
-        const response = await fetch(url, {
-            ...config,
-            signal: controller.signal
-        });
+            const response = await fetch(url, {
+                ...config,
+                signal: controller.signal
+            });
 
-        console.log(`INFOBLOX RESOLVER: response ${JSON.stringify(response)}`)
+            const body = await getResponseBody(response);
+            console.log(`INFOBLOX RESOLVER: response ${response.status} ${response.ok}`, body)
         
         clearTimeout(timeoutId);
 
         if (!response.ok) {
             console.error(`INFOBLOX RESOLVER: HTTP Error ${response.status} - ${url} - ${JSON.stringify(options)}`);
-            return {"result": "error"};
+            throw error;
         }
 
-        return response;
+        if (response.status != 201 && response.status != 200) {
+            throw new Error(`HTTP Error: ${JSON.stringify(response)}`);
+        }    
+
+        return body;
 
     } catch (error) {
         clearTimeout(timeoutId);
@@ -70,26 +88,17 @@ const makeRequest = async (endpoint, options = {}) => {
 };
 
 const makeGetRequest = async (endpoint) => {
-    console.log(`INFOBLOX RESOLVER: Querying DNS Entries: ${endpoint}\n`);
-    
-    const response = await makeRequest(endpoint, { method: 'GET' });
-    const data = await response.json();
-    return data
+    console.log(`INFOBLOX RESOLVER: Querying DNS Entries: ${endpoint}\n`);    
+    return await makeRequest(endpoint, { method: 'GET' });
 };
 
 const makePostRequest = async (endpoint, body) => {
     console.log(`INFOBLOX RESOLVER: Creating a new DNS Entry: ${endpoint}\n`);
 
-    const response = await makeRequest(endpoint, {
+    return await makeRequest(endpoint, {
         method: 'POST',
         body: JSON.stringify(body)
     });
-    
-    if (response.status != 201 && response.status != 200) {
-        throw new Error(`HTTP Error: ${JSON.stringify(response)}`);
-    }
-
-    return response;
 };
 
 const makePatchRequest = async (endpoint, body) => {
@@ -232,7 +241,7 @@ export const createTXT = async (env, attributes) => {
     };
 
     try {
-        const result = await makePostRequest('/record:txt', data);
+        await makePostRequest('/record:txt', data);
         return {"result": "success"};
     } catch (error) {
         console.error(`INFOBLOX RESOLVER: Failed to create TXT record: ${error}`);
@@ -294,12 +303,8 @@ export const createNetwork = async (env, attributes) => {
 export const queryNetwork = async (env, id) => {
     try {
         if (id) {
-            // Query specific network by ID
-            const response = await makeRequest(`/network/${id}`, { method: 'GET' });
-            const data = await response.json();
-            return {"result": "success"};
+            return await makeRequest(`/network/${id}`, { method: 'GET' });
         } else {
-            // Query all networks
             return await makeGetRequest('/network');
         }
     } catch (error) {
