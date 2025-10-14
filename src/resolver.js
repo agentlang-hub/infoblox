@@ -59,14 +59,17 @@ const makeRequest = async (endpoint, options = {}) => {
         
         clearTimeout(timeoutId);
 
+        if (response.status != 201 && response.status != 200) {
+            if (body.code == 'Client.Ibap.Data.Conflict') {
+                throw new Error(JSON.stringify(body));
+            }
+            throw new Error(`HTTP Error: ${JSON.stringify(response)}`);
+        }    
+
         if (!response.ok) {
             console.error(`INFOBLOX RESOLVER: HTTP Error ${response.status} - ${url} - ${JSON.stringify(options)}`);
             throw error;
         }
-
-        if (response.status != 201 && response.status != 200) {
-            throw new Error(`HTTP Error: ${JSON.stringify(response)}`);
-        }    
 
         return body;
 
@@ -123,11 +126,39 @@ export const createAAAA = async (env, attributes) => {
     };
 
     try {
+        const existingRecords = await makeGetRequest('/record:aaaa?name=' + data.name);
+        let existingRecord; 
+        
+        if (typeof existingRecords === 'array') {
+            existingRecord = existingRecords.find(record => 
+                record.name === data.name && record.ipv6addr === data.ipv6addr
+            );
+        } else {
+            existingRecord = existingRecords;
+        }
+
+        if (existingRecord && existingRecord._ref) {
+            return {"result": "error", "code": "AlreadyExists"};
+        }
+
         const result = await makePostRequest('/record:aaaa', data);
         return {"result": "success"};
     } catch (error) {
-        console.error(`INFOBLOX RESOLVER: Failed to create AAAA record: ${error}`);
-        return {"result": "error"};
+        console.error(`INFOBLOX RESOLVER: Failed to create AAAA record:`, error.message);
+        try {
+            const e = JSON.parse(error.message)
+            
+            // Check if it's a conflict error from the API
+            if (e.code === 'Client.Ibap.Data.Conflict' || 
+                (error.message && error.message.includes('ConflictError'))) {
+                return {"result": "error", "code": "AlreadyExists"};
+            }
+        }
+        catch (error) {
+            return {"result": "error", "code": "other"};
+        }
+        
+        return {"result": "error", "code": "other"};
     }
 };
 
@@ -136,7 +167,7 @@ export const queryAAAA = async (env, id) => {
         return await makeGetRequest('/record:aaaa');
     } catch (error) {
         console.error(`INFOBLOX RESOLVER: Failed to query AAAA records: ${error}`);
-        return {"result": "error"};
+        return {"result": "error", "code": "other"};
     }
 };
 
@@ -153,22 +184,34 @@ export const createCNAME = async (env, attributes) => {
         
         if (typeof existingRecords === 'array') {
             existingRecord = existingRecords.find(record => 
-                record.name === data.name
+                record.name === data.name && record.canonical === data.canonical
             );
         } else {
             existingRecord = existingRecords;
         }
 
-        let result;
         if (existingRecord && existingRecord._ref) {
-            result = await makePatchRequest(`/record:cname/${existingRecord._ref}`, data);
-        } else {
-            result = await makePostRequest('/record:cname', data);
+            return {"result": "error", "code": "AlreadyExists"};
         }
+
+        const result = await makePostRequest('/record:cname', data);
         return {"result": "success"};
     } catch (error) {
-        console.error(`INFOBLOX RESOLVER: Failed to create/update CNAME record: ${error}`);
-        return {"result": "error"};
+        console.error(`INFOBLOX RESOLVER: Failed to create/update CNAME record:`, error.message);
+        try {
+            const e = JSON.parse(error.message)
+            
+            // Check if it's a conflict error from the API
+            if (e.code === 'Client.Ibap.Data.Conflict' || 
+                (error.message && error.message.includes('ConflictError'))) {
+                return {"result": "error", "code": "AlreadyExists"};
+            }
+        }
+        catch (error) {
+            return {"result": "error", "code": "other"};
+        }
+        
+        return {"result": "error", "code": "other"};
     }
 };
 
@@ -177,7 +220,7 @@ export const queryCNAME = async (env, name) => {
         return await makeGetRequest('/record:cname');
     } catch (error) {
         console.error(`INFOBLOX RESOLVER: Failed to query CNAME records: ${error}`);
-        return {"result": "error"};
+        return {"result": "error", "code": "other"};
     }
 };
 
@@ -190,11 +233,39 @@ export const createMX = async (env, attributes) => {
     };
 
     try {
+        const existingRecords = await makeGetRequest('/record:mx?name=' + data.name);
+        let existingRecord; 
+        
+        if (typeof existingRecords === 'array') {
+            existingRecord = existingRecords.find(record => 
+                record.name === data.name && record.mail_exchanger === data.mail_exchanger && record.preference === data.preference
+            );
+        } else {
+            existingRecord = existingRecords;
+        }
+
+        if (existingRecord && existingRecord._ref) {
+            return {"result": "error", "code": "AlreadyExists"};
+        }
+
         const result = await makePostRequest('/record:mx', data);
         return {"result": "success"};
     } catch (error) {
-        console.error(`INFOBLOX RESOLVER: Failed to create MX record: ${error}`);
-        return {"result": "error"};
+        console.error(`INFOBLOX RESOLVER: Failed to create MX record:`, error.message);
+        try {
+            const e = JSON.parse(error.message)
+            
+            // Check if it's a conflict error from the API
+            if (e.code === 'Client.Ibap.Data.Conflict' || 
+                (error.message && error.message.includes('ConflictError'))) {
+                return {"result": "error", "code": "AlreadyExists"};
+            }
+        }
+        catch (error) {
+            return {"result": "error", "code": "other"};
+        }
+        
+        return {"result": "error", "code": "other"};
     }
 };
 
@@ -203,7 +274,7 @@ export const queryMX = async (env, name) => {
         return await makeGetRequest('/record:mx');
     } catch (error) {
         console.error(`INFOBLOX RESOLVER: Failed to query MX records: ${error}`);
-        return {"result": "error"};
+        return {"result": "error", "code": "other"};
     }
 };
 
@@ -216,11 +287,40 @@ export const createHost = async (env, attributes) => {
     };
 
     try {
+        const existingRecords = await makeGetRequest('/record:host?name=' + data.name);
+        let existingRecord; 
+        
+        if (typeof existingRecords === 'array') {
+            existingRecord = existingRecords.find(record => 
+                record.name === data.name && 
+                ((data.ipv4addr && record.ipv4addr === data.ipv4addr) || (data.ipv6addr && record.ipv6addr === data.ipv6addr))
+            );
+        } else {
+            existingRecord = existingRecords;
+        }
+
+        if (existingRecord && existingRecord._ref) {
+            return {"result": "error", "code": "AlreadyExists"};
+        }
+
         const result = await makePostRequest('/record:host', data);
         return {"result": "success"};
     } catch (error) {
-        console.error(`INFOBLOX RESOLVER: Failed to create HOST record: ${error}`);
-        return {"result": "error"};
+        console.error(`INFOBLOX RESOLVER: Failed to create HOST record:`, error.message);
+        try {
+            const e = JSON.parse(error.message)
+            
+            // Check if it's a conflict error from the API
+            if (e.code === 'Client.Ibap.Data.Conflict' || 
+                (error.message && error.message.includes('ConflictError'))) {
+                return {"result": "error", "code": "AlreadyExists"};
+            }
+        }
+        catch (error) {
+            return {"result": "error", "code": "other"};
+        }
+        
+        return {"result": "error", "code": "other"};
     }
 };
 
@@ -229,7 +329,7 @@ export const queryHost = async (env, name) => {
         return await makeGetRequest('/record:host');
     } catch (error) {
         console.error(`INFOBLOX RESOLVER: Failed to query HOST records: ${error}`);
-        return {"result": "error"};
+        return {"result": "error", "code": "other"};
     }
 };
 
@@ -241,11 +341,39 @@ export const createTXT = async (env, attributes) => {
     };
 
     try {
+        const existingRecords = await makeGetRequest('/record:txt?name=' + data.name);
+        let existingRecord; 
+        
+        if (typeof existingRecords === 'array') {
+            existingRecord = existingRecords.find(record => 
+                record.name === data.name && record.text === data.text
+            );
+        } else {
+            existingRecord = existingRecords;
+        }
+
+        if (existingRecord && existingRecord._ref) {
+            return {"result": "error", "code": "AlreadyExists"};
+        }
+
         await makePostRequest('/record:txt', data);
         return {"result": "success"};
     } catch (error) {
-        console.error(`INFOBLOX RESOLVER: Failed to create TXT record: ${error}`);
-        return {"result": "error"};
+        console.error(`INFOBLOX RESOLVER: Failed to create TXT record:`, error.message);
+        try {
+            const e = JSON.parse(error.message)
+            
+            // Check if it's a conflict error from the API
+            if (e.code === 'Client.Ibap.Data.Conflict' || 
+                (error.message && error.message.includes('ConflictError'))) {
+                return {"result": "error", "code": "AlreadyExists"};
+            }
+        }
+        catch (error) {
+            return {"result": "error", "code": "other"};
+        }
+        
+        return {"result": "error", "code": "other"};
     }
 };
 
@@ -254,7 +382,7 @@ export const queryTXT = async (env, name) => {
         return await makeGetRequest('/record:txt');
     } catch (error) {
         console.error(`INFOBLOX RESOLVER: Failed to query TXT records: ${error}`);
-        return {"result": "error"};
+        return {"result": "error", "code": "other"};
     }
 };
 
@@ -266,11 +394,39 @@ export const createPTR = async (env, attributes) => {
     };
 
     try {
+        const existingRecords = await makeGetRequest('/record:ptr?ptrdname=' + data.ptrdname);
+        let existingRecord; 
+        
+        if (typeof existingRecords === 'array') {
+            existingRecord = existingRecords.find(record => 
+                record.ptrdname === data.ptrdname && record.ipv4addr === data.ipv4addr
+            );
+        } else {
+            existingRecord = existingRecords;
+        }
+
+        if (existingRecord && existingRecord._ref) {
+            return {"result": "error", "code": "AlreadyExists"};
+        }
+
         const result = await makePostRequest('/record:ptr', data);
         return {"result": "success"};
     } catch (error) {
-        console.error(`INFOBLOX RESOLVER: Failed to create PTR record: ${error}`);
-        return {"result": "error"};
+        console.error(`INFOBLOX RESOLVER: Failed to create PTR record:`, error.message);
+        try {
+            const e = JSON.parse(error.message)
+            
+            // Check if it's a conflict error from the API
+            if (e.code === 'Client.Ibap.Data.Conflict' || 
+                (error.message && error.message.includes('ConflictError'))) {
+                return {"result": "error", "code": "AlreadyExists"};
+            }
+        }
+        catch (error) {
+            return {"result": "error", "code": "other"};
+        }
+        
+        return {"result": "error", "code": "other"};
     }
 };
 
@@ -279,7 +435,7 @@ export const queryPTR = async (env, name) => {
         return await makeGetRequest('/record:ptr');
     } catch (error) {
         console.error(`INFOBLOX RESOLVER: Failed to query PTR records: ${error}`);
-        return {"result": "error"};
+        return {"result": "error", "code": "other"};
     }
 };
 
@@ -290,13 +446,41 @@ export const createNetwork = async (env, attributes) => {
     };
 
     try {
+        const existingRecords = await makeGetRequest('/network?network=' + data.network);
+        let existingRecord; 
+        
+        if (typeof existingRecords === 'array') {
+            existingRecord = existingRecords.find(record => 
+                record.network === data.network
+            );
+        } else {
+            existingRecord = existingRecords;
+        }
+
+        if (existingRecord && existingRecord._ref) {
+            return {"result": "error", "code": "AlreadyExists"};
+        }
+
         const result = await makePostRequest('/network', data);
         return {
             "result": "success"
         };
     } catch (error) {
-        console.error(`INFOBLOX RESOLVER: Failed to create network: ${error}`);
-        return {"result": "error"};
+        console.error(`INFOBLOX RESOLVER: Failed to create network:`, error.message);
+        try {
+            const e = JSON.parse(error.message)
+            
+            // Check if it's a conflict error from the API
+            if (e.code === 'Client.Ibap.Data.Conflict' || 
+                (error.message && error.message.includes('ConflictError'))) {
+                return {"result": "error", "code": "AlreadyExists"};
+            }
+        }
+        catch (error) {
+            return {"result": "error", "code": "other"};
+        }
+        
+        return {"result": "error", "code": "other"};
     }
 };
 
@@ -309,7 +493,7 @@ export const queryNetwork = async (env, id) => {
         }
     } catch (error) {
         console.error(`INFOBLOX RESOLVER: Failed to query network: ${error}`);
-        return {"result": "error"};
+        return {"result": "error", "code": "other"};
     }
 };
 

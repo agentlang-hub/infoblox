@@ -91,6 +91,15 @@ app.post(`${wapiBase}/network`, authenticate, (req, res) => {
     return res.status(400).json({ error: 'Valid network CIDR is required' });
   }
   
+  // Check if network already exists
+  const existingNetwork = networks.find(n => n.network === network);
+  if (existingNetwork) {
+    return res.status(400).json({
+      "Error": `AdmConDataError: IB.Data.ConflictError: This network already exists (network: ${network})`,
+      "code": "Client.Ibap.Data.Conflict",
+      "text": `This network already exists (network: ${network})`
+    });
+  }
   
   const newNetwork = {
     id: generateId(),
@@ -146,7 +155,19 @@ app.post(urlHost, authenticate, (req, res) => {
     return res.status(400).json({ error: 'Invalid IPv6 address' });
   }
   
-
+  // Check if host record already exists
+  const existingRecord = dnsRecords.host.find(record => 
+    record.name === name && 
+    ((ipv4addr && record.ipv4addr === ipv4addr) || (ipv6addr && record.ipv6addr === ipv6addr))
+  );
+  if (existingRecord) {
+    const recordType = ipv4addr ? 'A' : 'AAAA';
+    return res.status(400).json({
+      "Error": `AdmConDataError: IB.Data.ConflictError: This record already exists (record name: ${name}, type: ${recordType})`,
+      "code": "Client.Ibap.Data.Conflict",
+      "text": `This record already exists (record name: ${name}, type: ${recordType})`
+    });
+  }
   
   const newRecord = {
     id: generateId(),
@@ -170,6 +191,29 @@ app.get(urlAaaa, authenticate, (req, res) => {
 app.post(urlAaaa, authenticate, (req, res) => {
   const { name, ipv6addr } = req.body;
 
+  if (!name || !ipv6addr) {
+    return res.status(400).json({ error: 'AAAA records require both name and ipv6addr' });
+  }
+  
+  if (!isValidDomain(name)) {
+    return res.status(400).json({ error: 'Invalid domain name' });
+  }
+  
+  if (!isValidIPv6(ipv6addr)) {
+    return res.status(400).json({ error: 'Invalid IPv6 address' });
+  }
+  
+  // Check if AAAA record already exists
+  const existingRecord = dnsRecords.aaaa.find(record => 
+    record.name === name && record.ipv6addr === ipv6addr
+  );
+  if (existingRecord) {
+    return res.status(400).json({
+      "Error": `AdmConDataError: IB.Data.ConflictError: This record already exists (record name: ${name}, type: AAAA)`,
+      "code": "Client.Ibap.Data.Conflict",
+      "text": `This record already exists (record name: ${name}, type: AAAA)`
+    });
+  }
   
   const newRecord = {
     id: generateId(),
@@ -198,6 +242,18 @@ app.post(urlCname, authenticate, (req, res) => {
   
   if (!isValidDomain(name) || !isValidDomain(canonical)) {
     return res.status(400).json({ error: 'Invalid domain name' });
+  }
+  
+  // Check if CNAME record already exists
+  const existingRecord = dnsRecords.cname.find(record => 
+    record.name === name && record.canonical === canonical
+  );
+  if (existingRecord) {
+    return res.status(400).json({
+      "Error": `AdmConDataError: IB.Data.ConflictError: This record already exists (record name: ${name}, type: CNAME)`,
+      "code": "Client.Ibap.Data.Conflict",
+      "text": `This record already exists (record name: ${name}, type: CNAME)`
+    });
   }
   
   const newRecord = {
@@ -233,6 +289,18 @@ app.post(urlMx, authenticate, (req, res) => {
     return res.status(400).json({ error: 'Preference must be a non-negative number' });
   }
   
+  // Check if MX record already exists
+  const existingRecord = dnsRecords.mx.find(record => 
+    record.name === name && record.mail_exchanger === mail_exchanger && record.preference === preference
+  );
+  if (existingRecord) {
+    return res.status(400).json({
+      "Error": `AdmConDataError: IB.Data.ConflictError: This record already exists (record name: ${name}, type: MX)`,
+      "code": "Client.Ibap.Data.Conflict",
+      "text": `This record already exists (record name: ${name}, type: MX)`
+    });
+  }
+  
   const newRecord = {
     id: generateId(),
     name,
@@ -261,6 +329,18 @@ app.post(urlTxt, authenticate, (req, res) => {
   
   if (!isValidDomain(name)) {
     return res.status(400).json({ error: 'Invalid domain name' });
+  }
+  
+  // Check if TXT record already exists
+  const existingRecord = dnsRecords.txt.find(record => 
+    record.name === name && record.text === text
+  );
+  if (existingRecord) {
+    return res.status(400).json({
+      "Error": `AdmConDataError: IB.Data.ConflictError: This record already exists (record name: ${name}, type: TXT)`,
+      "code": "Client.Ibap.Data.Conflict",
+      "text": `This record already exists (record name: ${name}, type: TXT)`
+    });
   }
   
   const newRecord = {
