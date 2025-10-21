@@ -183,6 +183,18 @@ app.post(urlHost, authenticate, (req, res) => {
   res.status(201).json(newRecord);
 });
 
+app.delete(`${urlHost}/:id`, authenticate, (req, res) => {
+  const { id } = req.params;
+  const recordIndex = dnsRecords.host.findIndex(record => record.id === id);
+  
+  if (recordIndex === -1) {
+    return res.status(404).json({ error: 'Host record not found' });
+  }
+  
+  dnsRecords.host.splice(recordIndex, 1);
+  res.status(200).json({ message: 'Host record deleted successfully' });
+});
+
 // DNS Record management - AAAA records
 app.get(urlAaaa, authenticate, (req, res) => {
   res.json({ result: dnsRecords.aaaa });
@@ -228,6 +240,18 @@ app.post(urlAaaa, authenticate, (req, res) => {
   res.status(201).json(newRecord);
 });
 
+app.delete(`${urlAaaa}/:id`, authenticate, (req, res) => {
+  const { id } = req.params;
+  const recordIndex = dnsRecords.aaaa.findIndex(record => record.id === id);
+  
+  if (recordIndex === -1) {
+    return res.status(404).json({ error: 'AAAA record not found' });
+  }
+  
+  dnsRecords.aaaa.splice(recordIndex, 1);
+  res.status(200).json({ message: 'AAAA record deleted successfully' });
+});
+
 // DNS Record management - CNAME records
 app.get(urlCname, authenticate, (req, res) => {
   res.json({ result: dnsRecords.cname });
@@ -267,6 +291,18 @@ app.post(urlCname, authenticate, (req, res) => {
   dnsRecords.cname.push(newRecord);
   
   res.status(201).json(newRecord);
+});
+
+app.delete(`${urlCname}/:id`, authenticate, (req, res) => {
+  const { id } = req.params;
+  const recordIndex = dnsRecords.cname.findIndex(record => record.id === id);
+  
+  if (recordIndex === -1) {
+    return res.status(404).json({ error: 'CNAME record not found' });
+  }
+  
+  dnsRecords.cname.splice(recordIndex, 1);
+  res.status(200).json({ message: 'CNAME record deleted successfully' });
 });
 
 // DNS Record management - MX records
@@ -315,6 +351,18 @@ app.post(urlMx, authenticate, (req, res) => {
   res.status(201).json(newRecord);
 });
 
+app.delete(`${urlMx}/:id`, authenticate, (req, res) => {
+  const { id } = req.params;
+  const recordIndex = dnsRecords.mx.findIndex(record => record.id === id);
+  
+  if (recordIndex === -1) {
+    return res.status(404).json({ error: 'MX record not found' });
+  }
+  
+  dnsRecords.mx.splice(recordIndex, 1);
+  res.status(200).json({ message: 'MX record deleted successfully' });
+});
+
 // DNS Record management - TXT records
 app.get(urlTxt, authenticate, (req, res) => {
   res.json({ result: dnsRecords.txt });
@@ -356,6 +404,18 @@ app.post(urlTxt, authenticate, (req, res) => {
   res.status(201).json(newRecord);
 });
 
+app.delete(`${urlTxt}/:id`, authenticate, (req, res) => {
+  const { id } = req.params;
+  const recordIndex = dnsRecords.txt.findIndex(record => record.id === id);
+  
+  if (recordIndex === -1) {
+    return res.status(404).json({ error: 'TXT record not found' });
+  }
+  
+  dnsRecords.txt.splice(recordIndex, 1);
+  res.status(200).json({ message: 'TXT record deleted successfully' });
+});
+
 // DNS Record management - PTR records
 app.get(urlPtr, authenticate, (req, res) => {
   res.json({ result: dnsRecords.ptr });
@@ -387,6 +447,31 @@ app.post(urlPtr, authenticate, (req, res) => {
   dnsRecords.ptr.push(newRecord);
   
   res.status(201).json(newRecord);
+});
+
+app.delete(`${urlPtr}/:id`, authenticate, (req, res) => {
+  const { id } = req.params;
+  const recordIndex = dnsRecords.ptr.findIndex(record => record.id === id);
+  
+  if (recordIndex === -1) {
+    return res.status(404).json({ error: 'PTR record not found' });
+  }
+  
+  dnsRecords.ptr.splice(recordIndex, 1);
+  res.status(200).json({ message: 'PTR record deleted successfully' });
+});
+
+// Network delete endpoint
+app.delete(`${wapiBase}/network/:id`, authenticate, (req, res) => {
+  const { id } = req.params;
+  const networkIndex = networks.findIndex(network => network.id === id);
+  
+  if (networkIndex === -1) {
+    return res.status(404).json({ error: 'Network not found' });
+  }
+  
+  networks.splice(networkIndex, 1);
+  res.status(200).json({ message: 'Network deleted successfully' });
 });
 
 // Error handling middleware
