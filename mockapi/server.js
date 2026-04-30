@@ -4,7 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3005;
 
 // Middleware
 app.use(helmet());
@@ -15,18 +15,18 @@ app.use(express.json());
 // Basic Authentication middleware
 const authenticate = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  
+
   if (!authHeader || !authHeader.startsWith('Basic ')) {
     return res.status(401).json({ error: 'Authentication required' });
   }
-  
+
   const credentials = Buffer.from(authHeader.split(' ')[1], 'base64').toString();
   const [username, password] = credentials.split(':');
-  
+
   if (username !== 'admin' || password !== 'infoblox') {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
-  
+
   next();
 };
 
@@ -41,10 +41,26 @@ let dnsRecords = {
   ptr: []
 };
 
-// Helper function to generate unique ID
-const generateId = () => Math.random().toString(36).substr(2, 9);
+// Generate a WAPI-style _ref: "<type>/<b64>:<key>/<view>"
+const generateRef = (type, key, view = 'default') => {
+  const internal = Buffer.from(`${type}$.${view}.${key}.${Math.random()}`)
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  return `${type}/${internal}:${key}/${view}`;
+};
 
-// Helper function to validate IP addresses
+// Filter records by query params (returns [] if no match)
+const filterRecords = (records, query) => {
+  const keys = Object.keys(query);
+  if (keys.length === 0) return records;
+  return records.filter(record =>
+    keys.every(key => String(record[key]) === String(query[key]))
+  );
+};
+
+// Validators
 const isValidIPv4 = (ip) => {
   const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
   if (!ipv4Regex.test(ip)) return false;
@@ -57,19 +73,23 @@ const isValidIPv6 = (ip) => {
   return ipv6Regex.test(ip);
 };
 
-// Helper function to validate domain names
 const isValidDomain = (domain) => {
   const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
   return domainRegex.test(domain);
 };
 
-// Helper function to validate CIDR notation
 const isValidCIDR = (cidr) => {
   const cidrRegex = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/;
   if (!cidrRegex.test(cidr)) return false;
   const [ip, prefix] = cidr.split('/');
   return isValidIPv4(ip) && parseInt(prefix) >= 0 && parseInt(prefix) <= 32;
 };
+
+const conflictError = (recordName, type) => ({
+  "Error": `AdmConDataError: IB.Data.ConflictError: This record already exists (record name: ${recordName}, type: ${type})`,
+  "code": "Client.Ibap.Data.Conflict",
+  "text": `This record already exists (record name: ${recordName}, type: ${type})`
+});
 
 // Health check
 app.get('/health', (req, res) => {
@@ -79,125 +99,113 @@ app.get('/health', (req, res) => {
 // WAPI v2.13.1 routes
 const wapiBase = '/wapi/v2.13.1';
 
-// Network management
+// ---------- Network ----------
 app.get(`${wapiBase}/network`, authenticate, (req, res) => {
-  res.json({ result: networks });
+  res.json(filterRecords(networks, req.query));
 });
 
 app.post(`${wapiBase}/network`, authenticate, (req, res) => {
   const { network } = req.body;
-  
+
   if (!network || !isValidCIDR(network)) {
     return res.status(400).json({ error: 'Valid network CIDR is required' });
   }
-  
-  // Check if network already exists
-  const existingNetwork = networks.find(n => n.network === network);
-  if (existingNetwork) {
+
+  if (networks.find(n => n.network === network)) {
     return res.status(400).json({
       "Error": `AdmConDataError: IB.Data.ConflictError: This network already exists (network: ${network})`,
       "code": "Client.Ibap.Data.Conflict",
       "text": `This network already exists (network: ${network})`
     });
   }
-  
-  const newNetwork = {
-    id: generateId(),
-    network,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-  
+
+  const _ref = generateRef('network', network);
+  const newNetwork = { _ref, network, network_view: 'default' };
   networks.push(newNetwork);
-  
-  res.status(201).json(newNetwork);
+
+  res.status(201).json(_ref);
 });
 
-app.get(`${wapiBase}/network/:id`, authenticate, (req, res) => {
-  const { id } = req.params;
-  const network = networks.find(n => n.id === id);
-  
-  if (!network) {
-    return res.status(404).json({ error: 'Network not found' });
-  }
-  
+app.get(`${wapiBase}/network/*`, authenticate, (req, res) => {
+  const fullRef = `network/${req.params[0]}`;
+  const network = networks.find(n => n._ref === fullRef);
+  if (!network) return res.status(404).json({ error: 'Network not found' });
   res.json(network);
 });
 
-const urlHost = '/wapi/v2.13.1/record\\:host'
-const urlAaaa = '/wapi/v2.13.1/record\\:aaaa'
-const urlCname = '/wapi/v2.13.1/record\\:cname'
-const urlMx = '/wapi/v2.13.1/record\\:mx'
-const urlTxt = '/wapi/v2.13.1/record\\:txt'
-const urlPtr = '/wapi/v2.13.1/record\\:ptr'
+app.delete(`${wapiBase}/network/*`, authenticate, (req, res) => {
+  const fullRef = `network/${req.params[0]}`;
+  const idx = networks.findIndex(n => n._ref === fullRef);
+  if (idx === -1) return res.status(404).json({ error: 'Network not found' });
+  networks.splice(idx, 1);
+  res.status(200).json(fullRef);
+});
 
-// DNS Record management - Host records
+const urlHost = '/wapi/v2.13.1/record\\:host';
+const urlAaaa = '/wapi/v2.13.1/record\\:aaaa';
+const urlCname = '/wapi/v2.13.1/record\\:cname';
+const urlMx = '/wapi/v2.13.1/record\\:mx';
+const urlTxt = '/wapi/v2.13.1/record\\:txt';
+const urlPtr = '/wapi/v2.13.1/record\\:ptr';
+
+// ---------- Host records ----------
 app.get(urlHost, authenticate, (req, res) => {
-  res.json({ result: dnsRecords.host });
+  res.json(filterRecords(dnsRecords.host, req.query));
 });
 
 app.post(urlHost, authenticate, (req, res) => {
   const { name, ipv4addr, ipv6addr } = req.body;
-  
+
   if (!name || (!ipv4addr && !ipv6addr)) {
     return res.status(400).json({ error: 'Host records require name and either ipv4addr or ipv6addr' });
   }
-  
   if (!isValidDomain(name)) {
     return res.status(400).json({ error: 'Invalid domain name' });
   }
-  
   if (ipv4addr && !isValidIPv4(ipv4addr)) {
     return res.status(400).json({ error: 'Invalid IPv4 address' });
   }
-  
   if (ipv6addr && !isValidIPv6(ipv6addr)) {
     return res.status(400).json({ error: 'Invalid IPv6 address' });
   }
-  
-  // Check if host record already exists
-  const existingRecord = dnsRecords.host.find(record => 
-    record.name === name && 
-    ((ipv4addr && record.ipv4addr === ipv4addr) || (ipv6addr && record.ipv6addr === ipv6addr))
+
+  const existing = dnsRecords.host.find(r =>
+    r.name === name &&
+    ((ipv4addr && r.ipv4addr === ipv4addr) || (ipv6addr && r.ipv6addr === ipv6addr))
   );
-  if (existingRecord) {
-    const recordType = ipv4addr ? 'A' : 'AAAA';
-    return res.status(400).json({
-      "Error": `AdmConDataError: IB.Data.ConflictError: This record already exists (record name: ${name}, type: ${recordType})`,
-      "code": "Client.Ibap.Data.Conflict",
-      "text": `This record already exists (record name: ${name}, type: ${recordType})`
-    });
+  if (existing) {
+    return res.status(400).json(conflictError(name, ipv4addr ? 'A' : 'AAAA'));
   }
-  
+
+  const _ref = generateRef('record:host', name);
   const newRecord = {
-    id: generateId(),
-    name,
+    _ref, name,
     ipv4addr: ipv4addr || null,
     ipv6addr: ipv6addr || null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
+    view: 'default'
   };
-  
   dnsRecords.host.push(newRecord);
-  
-  res.status(201).json(newRecord);
+  res.status(201).json(_ref);
 });
 
-app.delete(`${urlHost}/:id`, authenticate, (req, res) => {
-  const { id } = req.params;
-  const recordIndex = dnsRecords.host.findIndex(record => record.id === id);
-  
-  if (recordIndex === -1) {
-    return res.status(404).json({ error: 'Host record not found' });
-  }
-  
-  dnsRecords.host.splice(recordIndex, 1);
-  res.status(200).json({ message: 'Host record deleted successfully' });
+app.get(`${urlHost}/*`, authenticate, (req, res) => {
+  const fullRef = `record:host/${req.params[0]}`;
+  const record = dnsRecords.host.find(r => r._ref === fullRef);
+  if (!record) return res.status(404).json({ error: 'Host record not found' });
+  res.json(record);
 });
 
-// DNS Record management - AAAA records
+app.delete(`${urlHost}/*`, authenticate, (req, res) => {
+  const fullRef = `record:host/${req.params[0]}`;
+  const idx = dnsRecords.host.findIndex(r => r._ref === fullRef);
+  if (idx === -1) return res.status(404).json({ error: 'Host record not found' });
+  dnsRecords.host.splice(idx, 1);
+  res.status(200).json(fullRef);
+});
+
+// ---------- AAAA records ----------
 app.get(urlAaaa, authenticate, (req, res) => {
-  res.json({ result: dnsRecords.aaaa });
+  res.json(filterRecords(dnsRecords.aaaa, req.query));
 });
 
 app.post(urlAaaa, authenticate, (req, res) => {
@@ -206,272 +214,202 @@ app.post(urlAaaa, authenticate, (req, res) => {
   if (!name || !ipv6addr) {
     return res.status(400).json({ error: 'AAAA records require both name and ipv6addr' });
   }
-  
   if (!isValidDomain(name)) {
     return res.status(400).json({ error: 'Invalid domain name' });
   }
-  
   if (!isValidIPv6(ipv6addr)) {
     return res.status(400).json({ error: 'Invalid IPv6 address' });
   }
-  
-  // Check if AAAA record already exists
-  const existingRecord = dnsRecords.aaaa.find(record => 
-    record.name === name && record.ipv6addr === ipv6addr
-  );
-  if (existingRecord) {
-    return res.status(400).json({
-      "Error": `AdmConDataError: IB.Data.ConflictError: This record already exists (record name: ${name}, type: AAAA)`,
-      "code": "Client.Ibap.Data.Conflict",
-      "text": `This record already exists (record name: ${name}, type: AAAA)`
-    });
+
+  if (dnsRecords.aaaa.find(r => r.name === name && r.ipv6addr === ipv6addr)) {
+    return res.status(400).json(conflictError(name, 'AAAA'));
   }
-  
-  const newRecord = {
-    id: generateId(),
-    name,
-    ipv6addr,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-  
+
+  const _ref = generateRef('record:aaaa', name);
+  const newRecord = { _ref, name, ipv6addr, view: 'default' };
   dnsRecords.aaaa.push(newRecord);
-  
-  res.status(201).json(newRecord);
+  res.status(201).json(_ref);
 });
 
-app.delete(`${urlAaaa}/:id`, authenticate, (req, res) => {
-  const { id } = req.params;
-  const recordIndex = dnsRecords.aaaa.findIndex(record => record.id === id);
-  
-  if (recordIndex === -1) {
-    return res.status(404).json({ error: 'AAAA record not found' });
-  }
-  
-  dnsRecords.aaaa.splice(recordIndex, 1);
-  res.status(200).json({ message: 'AAAA record deleted successfully' });
+app.get(`${urlAaaa}/*`, authenticate, (req, res) => {
+  const fullRef = `record:aaaa/${req.params[0]}`;
+  const record = dnsRecords.aaaa.find(r => r._ref === fullRef);
+  if (!record) return res.status(404).json({ error: 'AAAA record not found' });
+  res.json(record);
 });
 
-// DNS Record management - CNAME records
+app.delete(`${urlAaaa}/*`, authenticate, (req, res) => {
+  const fullRef = `record:aaaa/${req.params[0]}`;
+  const idx = dnsRecords.aaaa.findIndex(r => r._ref === fullRef);
+  if (idx === -1) return res.status(404).json({ error: 'AAAA record not found' });
+  dnsRecords.aaaa.splice(idx, 1);
+  res.status(200).json(fullRef);
+});
+
+// ---------- CNAME records ----------
 app.get(urlCname, authenticate, (req, res) => {
-  res.json({ result: dnsRecords.cname });
+  res.json(filterRecords(dnsRecords.cname, req.query));
 });
 
 app.post(urlCname, authenticate, (req, res) => {
   const { name, canonical } = req.body;
-  
+
   if (!name || !canonical) {
     return res.status(400).json({ error: 'CNAME records require both name and canonical' });
   }
-  
   if (!isValidDomain(name) || !isValidDomain(canonical)) {
     return res.status(400).json({ error: 'Invalid domain name' });
   }
-  
-  // Check if CNAME record already exists
-  const existingRecord = dnsRecords.cname.find(record => 
-    record.name === name && record.canonical === canonical
-  );
-  if (existingRecord) {
-    return res.status(400).json({
-      "Error": `AdmConDataError: IB.Data.ConflictError: This record already exists (record name: ${name}, type: CNAME)`,
-      "code": "Client.Ibap.Data.Conflict",
-      "text": `This record already exists (record name: ${name}, type: CNAME)`
-    });
+
+  if (dnsRecords.cname.find(r => r.name === name && r.canonical === canonical)) {
+    return res.status(400).json(conflictError(name, 'CNAME'));
   }
-  
-  const newRecord = {
-    id: generateId(),
-    name,
-    canonical,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-  
+
+  const _ref = generateRef('record:cname', name);
+  const newRecord = { _ref, name, canonical, view: 'default' };
   dnsRecords.cname.push(newRecord);
-  
-  res.status(201).json(newRecord);
+  res.status(201).json(_ref);
 });
 
-app.delete(`${urlCname}/:id`, authenticate, (req, res) => {
-  const { id } = req.params;
-  const recordIndex = dnsRecords.cname.findIndex(record => record.id === id);
-  
-  if (recordIndex === -1) {
-    return res.status(404).json({ error: 'CNAME record not found' });
-  }
-  
-  dnsRecords.cname.splice(recordIndex, 1);
-  res.status(200).json({ message: 'CNAME record deleted successfully' });
+app.get(`${urlCname}/*`, authenticate, (req, res) => {
+  const fullRef = `record:cname/${req.params[0]}`;
+  const record = dnsRecords.cname.find(r => r._ref === fullRef);
+  if (!record) return res.status(404).json({ error: 'CNAME record not found' });
+  res.json(record);
 });
 
-// DNS Record management - MX records
+app.delete(`${urlCname}/*`, authenticate, (req, res) => {
+  const fullRef = `record:cname/${req.params[0]}`;
+  const idx = dnsRecords.cname.findIndex(r => r._ref === fullRef);
+  if (idx === -1) return res.status(404).json({ error: 'CNAME record not found' });
+  dnsRecords.cname.splice(idx, 1);
+  res.status(200).json(fullRef);
+});
+
+// ---------- MX records ----------
 app.get(urlMx, authenticate, (req, res) => {
-  res.json({ result: dnsRecords.mx });
+  res.json(filterRecords(dnsRecords.mx, req.query));
 });
 
 app.post(urlMx, authenticate, (req, res) => {
   const { name, preference, mail_exchanger } = req.body;
-  
+
   if (!name || preference === undefined || !mail_exchanger) {
     return res.status(400).json({ error: 'MX records require name, preference, and mail_exchanger' });
   }
-  
   if (!isValidDomain(name) || !isValidDomain(mail_exchanger)) {
     return res.status(400).json({ error: 'Invalid domain name' });
   }
-  
   if (typeof preference !== 'number' || preference < 0) {
     return res.status(400).json({ error: 'Preference must be a non-negative number' });
   }
-  
-  // Check if MX record already exists
-  const existingRecord = dnsRecords.mx.find(record => 
-    record.name === name && record.mail_exchanger === mail_exchanger && record.preference === preference
-  );
-  if (existingRecord) {
-    return res.status(400).json({
-      "Error": `AdmConDataError: IB.Data.ConflictError: This record already exists (record name: ${name}, type: MX)`,
-      "code": "Client.Ibap.Data.Conflict",
-      "text": `This record already exists (record name: ${name}, type: MX)`
-    });
+
+  if (dnsRecords.mx.find(r => r.name === name && r.mail_exchanger === mail_exchanger && r.preference === preference)) {
+    return res.status(400).json(conflictError(name, 'MX'));
   }
-  
-  const newRecord = {
-    id: generateId(),
-    name,
-    preference,
-    mail_exchanger,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-  
+
+  const _ref = generateRef('record:mx', name);
+  const newRecord = { _ref, name, preference, mail_exchanger, view: 'default' };
   dnsRecords.mx.push(newRecord);
-  
-  res.status(201).json(newRecord);
+  res.status(201).json(_ref);
 });
 
-app.delete(`${urlMx}/:id`, authenticate, (req, res) => {
-  const { id } = req.params;
-  const recordIndex = dnsRecords.mx.findIndex(record => record.id === id);
-  
-  if (recordIndex === -1) {
-    return res.status(404).json({ error: 'MX record not found' });
-  }
-  
-  dnsRecords.mx.splice(recordIndex, 1);
-  res.status(200).json({ message: 'MX record deleted successfully' });
+app.get(`${urlMx}/*`, authenticate, (req, res) => {
+  const fullRef = `record:mx/${req.params[0]}`;
+  const record = dnsRecords.mx.find(r => r._ref === fullRef);
+  if (!record) return res.status(404).json({ error: 'MX record not found' });
+  res.json(record);
 });
 
-// DNS Record management - TXT records
+app.delete(`${urlMx}/*`, authenticate, (req, res) => {
+  const fullRef = `record:mx/${req.params[0]}`;
+  const idx = dnsRecords.mx.findIndex(r => r._ref === fullRef);
+  if (idx === -1) return res.status(404).json({ error: 'MX record not found' });
+  dnsRecords.mx.splice(idx, 1);
+  res.status(200).json(fullRef);
+});
+
+// ---------- TXT records ----------
 app.get(urlTxt, authenticate, (req, res) => {
-  res.json({ result: dnsRecords.txt });
+  res.json(filterRecords(dnsRecords.txt, req.query));
 });
 
 app.post(urlTxt, authenticate, (req, res) => {
   const { name, text } = req.body;
-  
+
   if (!name || !text) {
     return res.status(400).json({ error: 'TXT records require both name and text' });
   }
-  
   if (!isValidDomain(name)) {
     return res.status(400).json({ error: 'Invalid domain name' });
   }
-  
-  // Check if TXT record already exists
-  const existingRecord = dnsRecords.txt.find(record => 
-    record.name === name && record.text === text
-  );
-  if (existingRecord) {
-    return res.status(400).json({
-      "Error": `AdmConDataError: IB.Data.ConflictError: This record already exists (record name: ${name}, type: TXT)`,
-      "code": "Client.Ibap.Data.Conflict",
-      "text": `This record already exists (record name: ${name}, type: TXT)`
-    });
+
+  if (dnsRecords.txt.find(r => r.name === name && r.text === text)) {
+    return res.status(400).json(conflictError(name, 'TXT'));
   }
-  
-  const newRecord = {
-    id: generateId(),
-    name,
-    text,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-  
+
+  const _ref = generateRef('record:txt', name);
+  const newRecord = { _ref, name, text, view: 'default' };
   dnsRecords.txt.push(newRecord);
-  
-  res.status(201).json(newRecord);
+  res.status(201).json(_ref);
 });
 
-app.delete(`${urlTxt}/:id`, authenticate, (req, res) => {
-  const { id } = req.params;
-  const recordIndex = dnsRecords.txt.findIndex(record => record.id === id);
-  
-  if (recordIndex === -1) {
-    return res.status(404).json({ error: 'TXT record not found' });
-  }
-  
-  dnsRecords.txt.splice(recordIndex, 1);
-  res.status(200).json({ message: 'TXT record deleted successfully' });
+app.get(`${urlTxt}/*`, authenticate, (req, res) => {
+  const fullRef = `record:txt/${req.params[0]}`;
+  const record = dnsRecords.txt.find(r => r._ref === fullRef);
+  if (!record) return res.status(404).json({ error: 'TXT record not found' });
+  res.json(record);
 });
 
-// DNS Record management - PTR records
+app.delete(`${urlTxt}/*`, authenticate, (req, res) => {
+  const fullRef = `record:txt/${req.params[0]}`;
+  const idx = dnsRecords.txt.findIndex(r => r._ref === fullRef);
+  if (idx === -1) return res.status(404).json({ error: 'TXT record not found' });
+  dnsRecords.txt.splice(idx, 1);
+  res.status(200).json(fullRef);
+});
+
+// ---------- PTR records ----------
 app.get(urlPtr, authenticate, (req, res) => {
-  res.json({ result: dnsRecords.ptr });
+  res.json(filterRecords(dnsRecords.ptr, req.query));
 });
 
 app.post(urlPtr, authenticate, (req, res) => {
   const { ptrdname, ipv4addr } = req.body;
-  
+
   if (!ptrdname || !ipv4addr) {
     return res.status(400).json({ error: 'PTR records require both ptrdname and ipv4addr' });
   }
-  
   if (!isValidDomain(ptrdname)) {
     return res.status(400).json({ error: 'Invalid domain name' });
   }
-  
   if (!isValidIPv4(ipv4addr)) {
     return res.status(400).json({ error: 'Invalid IPv4 address' });
   }
-  
-  const newRecord = {
-    id: generateId(),
-    ptrdname,
-    ipv4addr,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-  
+
+  if (dnsRecords.ptr.find(r => r.ptrdname === ptrdname && r.ipv4addr === ipv4addr)) {
+    return res.status(400).json(conflictError(ptrdname, 'PTR'));
+  }
+
+  const _ref = generateRef('record:ptr', ptrdname);
+  const newRecord = { _ref, ptrdname, ipv4addr, view: 'default' };
   dnsRecords.ptr.push(newRecord);
-  
-  res.status(201).json(newRecord);
+  res.status(201).json(_ref);
 });
 
-app.delete(`${urlPtr}/:id`, authenticate, (req, res) => {
-  const { id } = req.params;
-  const recordIndex = dnsRecords.ptr.findIndex(record => record.id === id);
-  
-  if (recordIndex === -1) {
-    return res.status(404).json({ error: 'PTR record not found' });
-  }
-  
-  dnsRecords.ptr.splice(recordIndex, 1);
-  res.status(200).json({ message: 'PTR record deleted successfully' });
+app.get(`${urlPtr}/*`, authenticate, (req, res) => {
+  const fullRef = `record:ptr/${req.params[0]}`;
+  const record = dnsRecords.ptr.find(r => r._ref === fullRef);
+  if (!record) return res.status(404).json({ error: 'PTR record not found' });
+  res.json(record);
 });
 
-// Network delete endpoint
-app.delete(`${wapiBase}/network/:id`, authenticate, (req, res) => {
-  const { id } = req.params;
-  const networkIndex = networks.findIndex(network => network.id === id);
-  
-  if (networkIndex === -1) {
-    return res.status(404).json({ error: 'Network not found' });
-  }
-  
-  networks.splice(networkIndex, 1);
-  res.status(200).json({ message: 'Network deleted successfully' });
+app.delete(`${urlPtr}/*`, authenticate, (req, res) => {
+  const fullRef = `record:ptr/${req.params[0]}`;
+  const idx = dnsRecords.ptr.findIndex(r => r._ref === fullRef);
+  if (idx === -1) return res.status(404).json({ error: 'PTR record not found' });
+  dnsRecords.ptr.splice(idx, 1);
+  res.status(200).json(fullRef);
 });
 
 // Error handling middleware
