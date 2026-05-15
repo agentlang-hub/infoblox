@@ -91,6 +91,58 @@ const conflictError = (recordName, type) => ({
   "text": `This record already exists (record name: ${recordName}, type: ${type})`
 });
 
+// Pool of random WAPI-style error responses used when ERROR_MODE is enabled
+const randomErrors = [
+  {
+    "Error": "AdmConDataNotFoundError: Zone does not exist",
+    "code": "Client.Ibap.Data.NotFound",
+    "text": "Cannot find authoritative zone"
+  },
+  {
+    "Error": "AdmConProtoError: Invalid canonical name",
+    "code": "Client.Ibap.Proto",
+    "text": "Invalid value for field 'canonical'"
+  },
+  {
+    "Error": "AdmConDataError: IB.Data.ConflictError: Object already exists",
+    "code": "Client.Ibap.Data.Conflict",
+    "text": "The record could not be created because it conflicts with an existing object"
+  },
+  {
+    "Error": "AdmConProtoError: Missing required field",
+    "code": "Client.Ibap.Proto",
+    "text": "A required field is missing from the request"
+  },
+  {
+    "Error": "AdmConServerError: Internal server error",
+    "code": "Server.Ibap.Internal",
+    "text": "An unexpected error occurred while processing the request"
+  },
+  {
+    "Error": "AdmConAuthError: Insufficient permissions",
+    "code": "Client.Ibap.Auth",
+    "text": "User does not have permission to perform this operation"
+  },
+  {
+    "Error": "AdmConDataError: IB.Data.InvalidReference: Object not found",
+    "code": "Client.Ibap.Data.NotFound",
+    "text": "The referenced object does not exist"
+  },
+  {
+    "Error": "AdmConProtoError: Invalid IP address",
+    "code": "Client.Ibap.Proto",
+    "text": "The provided IP address is not valid"
+  }
+];
+
+const errorModeMiddleware = (req, res, next) => {
+  if (process.env.ERROR_MODE && req.method === 'POST') {
+    const err = randomErrors[Math.floor(Math.random() * randomErrors.length)];
+    return res.status(400).json(err);
+  }
+  next();
+};
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
@@ -98,6 +150,9 @@ app.get('/health', (req, res) => {
 
 // WAPI v2.13.1 routes
 const wapiBase = '/wapi/v2.13.1';
+
+// Inject random WAPI errors on create when ERROR_MODE is enabled
+app.use(wapiBase, errorModeMiddleware);
 
 // ---------- Network ----------
 app.get(`${wapiBase}/network`, authenticate, (req, res) => {
