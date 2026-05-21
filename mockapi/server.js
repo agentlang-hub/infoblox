@@ -40,6 +40,7 @@ let dnsRecords = {
   a: [],
   aaaa: [],
   cname: [],
+  alias: [],
   mx: [],
   txt: [],
   ptr: [],
@@ -205,6 +206,7 @@ const urlHost = "/wapi/v2.13.1/record\\:host";
 const urlA = "/wapi/v2.13.1/record\\:a";
 const urlAaaa = "/wapi/v2.13.1/record\\:aaaa";
 const urlCname = "/wapi/v2.13.1/record\\:cname";
+const urlAlias = "/wapi/v2.13.1/record\\:alias";
 const urlMx = "/wapi/v2.13.1/record\\:mx";
 const urlTxt = "/wapi/v2.13.1/record\\:txt";
 const urlPtr = "/wapi/v2.13.1/record\\:ptr";
@@ -218,11 +220,9 @@ app.post(urlHost, authenticate, (req, res) => {
   const { name, ipv4addr, ipv6addr } = req.body;
 
   if (!name || (!ipv4addr && !ipv6addr)) {
-    return res
-      .status(400)
-      .json({
-        error: "Host records require name and either ipv4addr or ipv6addr",
-      });
+    return res.status(400).json({
+      error: "Host records require name and either ipv4addr or ipv6addr",
+    });
   }
   if (!isValidDomain(name)) {
     return res.status(400).json({ error: "Invalid domain name" });
@@ -408,6 +408,77 @@ app.delete(`${urlCname}/*`, authenticate, (req, res) => {
   res.status(200).json(fullRef);
 });
 
+// ---------- ALIAS records ----------
+// Unlike CNAME, an ALIAS carries `target_type` (which kind of record
+// the target_name resolves to: A / AAAA / MX / etc.). target_type
+// defaults to "A" when callers omit it — the most common ticketflow
+// case (zone-apex / TLD pointing to a load-balancer FQDN whose
+// resolution is an A record).
+const ALIAS_TARGET_TYPES = [
+  "A",
+  "AAAA",
+  "MX",
+  "NAPTR",
+  "PTR",
+  "SPF",
+  "SRV",
+  "TXT",
+];
+
+app.get(urlAlias, authenticate, (req, res) => {
+  res.json(filterRecords(dnsRecords.alias, req.query));
+});
+
+app.post(urlAlias, authenticate, (req, res) => {
+  const { name, target_name } = req.body;
+  const target_type = req.body.target_type || "A";
+
+  if (!name || !target_name) {
+    return res
+      .status(400)
+      .json({ error: "ALIAS records require both name and target_name" });
+  }
+  if (!isValidDomain(name) || !isValidDomain(target_name)) {
+    return res.status(400).json({ error: "Invalid domain name" });
+  }
+  if (!ALIAS_TARGET_TYPES.includes(target_type)) {
+    return res
+      .status(400)
+      .json({
+        error: `Invalid target_type; must be one of ${ALIAS_TARGET_TYPES.join(", ")}`,
+      });
+  }
+
+  if (
+    dnsRecords.alias.find(
+      (r) => r.name === name && r.target_name === target_name,
+    )
+  ) {
+    return res.status(400).json(conflictError(name, "ALIAS"));
+  }
+
+  const _ref = generateRef("record:alias", name);
+  const newRecord = { _ref, name, target_name, target_type, view: "default" };
+  dnsRecords.alias.push(newRecord);
+  res.status(201).json(_ref);
+});
+
+app.get(`${urlAlias}/*`, authenticate, (req, res) => {
+  const fullRef = `record:alias/${req.params[0]}`;
+  const record = dnsRecords.alias.find((r) => r._ref === fullRef);
+  if (!record) return res.status(404).json({ error: "ALIAS record not found" });
+  res.json(record);
+});
+
+app.delete(`${urlAlias}/*`, authenticate, (req, res) => {
+  const fullRef = `record:alias/${req.params[0]}`;
+  const idx = dnsRecords.alias.findIndex((r) => r._ref === fullRef);
+  if (idx === -1)
+    return res.status(404).json({ error: "ALIAS record not found" });
+  dnsRecords.alias.splice(idx, 1);
+  res.status(200).json(fullRef);
+});
+
 // ---------- MX records ----------
 app.get(urlMx, authenticate, (req, res) => {
   res.json(filterRecords(dnsRecords.mx, req.query));
@@ -417,11 +488,9 @@ app.post(urlMx, authenticate, (req, res) => {
   const { name, preference, mail_exchanger } = req.body;
 
   if (!name || preference === undefined || !mail_exchanger) {
-    return res
-      .status(400)
-      .json({
-        error: "MX records require name, preference, and mail_exchanger",
-      });
+    return res.status(400).json({
+      error: "MX records require name, preference, and mail_exchanger",
+    });
   }
   if (!isValidDomain(name) || !isValidDomain(mail_exchanger)) {
     return res.status(400).json({ error: "Invalid domain name" });
